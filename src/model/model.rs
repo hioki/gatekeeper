@@ -37,7 +37,7 @@ use std::str::FromStr;
 use derive_more::{Display, From, Into};
 use failure::Fail;
 use log::*;
-use regex::Regex;
+use regex::{escape, Regex};
 use serde::*;
 
 pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion(5);
@@ -254,10 +254,12 @@ pub struct UdpDatagram<'a> {
 #[derive(Debug, Clone, Serialize)]
 pub enum AddressPattern {
     /// e.g. 127.0.0.1/16
-    IpAddr { addr: IpAddr, prefix: u8 },
+    IpAddr {
+        addr: IpAddr,
+        prefix: u8,
+    },
     Domain {
-        #[serde(with = "serde_regex")]
-        pattern: Regex,
+        wildcard: String,
     },
 }
 
@@ -323,11 +325,16 @@ impl AddressPattern {
     }
 }
 
-impl From<Regex> for AddressPattern {
-    fn from(reg: Regex) -> Self {
-        AddressPattern::Domain { pattern: reg }
+impl From<&str> for AddressPattern {
+    fn from(s: &str) -> Self {
+        AddressPattern::Domain {
+            wildcard: s.to_owned(),
+        }
     }
 }
+
+const ESCAPED_WILDCARD: &'static str = r"\*";
+const AVAILABLE_PATTERNS_FOR_DOMAIN_LABEL: &'static str = r"[a-zA-Z0-9-]";
 
 impl Matcher for AddressPattern {
     type Item = Address;
@@ -355,7 +362,13 @@ impl Matcher for AddressPattern {
                 let bmask = !0u128 << (128 - prefix);
                 u128::from(*addrp) & bmask == u128::from(*addr) & bmask
             }
-            (P::Domain { pattern }, Address::Domain(domain, _)) => pattern.is_match(domain),
+            (P::Domain { wildcard }, Address::Domain(domain, _)) => Regex::new(
+                escape(wildcard)
+                    .replace(ESCAPED_WILDCARD, AVAILABLE_PATTERNS_FOR_DOMAIN_LABEL)
+                    .as_str(),
+            )
+            .unwrap()
+            .is_match(domain),
             _ => false,
         }
     }
@@ -512,14 +525,8 @@ mod format {
     // dummy type for acquires derived deserializer
     #[derive(Debug, Clone, Deserialize)]
     enum AddressPatternDef {
-        IpAddr {
-            addr: IpAddr,
-            prefix: u8,
-        },
-        Domain {
-            #[serde(with = "serde_regex")]
-            pattern: Regex,
-        },
+        IpAddr { addr: IpAddr, prefix: u8 },
+        Domain { wildcard: String },
     }
 
     impl<'de> Deserialize<'de> for AddressPattern {
@@ -533,7 +540,7 @@ mod format {
                 IpAddr { addr, prefix } => AddressPattern::addr(addr, prefix).map_err(|err| {
                     de::Error::invalid_value(Unexpected::Unsigned(prefix as u64), &err)
                 }),
-                Domain { pattern } => Ok(AddressPattern::Domain { pattern }),
+                Domain { wildcard } => Ok(AddressPattern::Domain { wildcard }),
             }
         }
     }
@@ -741,11 +748,8 @@ mod test {
         use Address::Domain;
         use RulePattern::*;
         let mut rule = ConnectRule::none();
-        rule.allow(
-            Specif(Regex::new(r"(.*\.)?actcast\.io").unwrap().into()),
-            Any,
-            Specif(L4Protocol::Tcp),
-        );
+        rule.allow(Specif("*.actcast.io".into()), Any, Specif(L4Protocol::Tcp));
+        rule.allow(Specif("actcast.io".into()), Any, Specif(L4Protocol::Tcp));
         assert!(!rule.check("0.0.0.0:80".parse().unwrap(), Tcp));
         assert!(!rule.check(Domain("example.com".to_owned(), 443), Tcp));
         assert!(rule.check(Domain("actcast.io".to_owned(), 60000), Tcp));
@@ -816,11 +820,7 @@ mod test {
             Specif(443),
             Any,
         );
-        rule.allow(
-            Specif(Regex::new(r"\A(.+\.)?actcast\.io\z").unwrap().into()),
-            Any,
-            Specif(L4Protocol::Tcp),
-        );
+        rule.allow(Specif("*.actcast.io".into()), Any, Specif(L4Protocol::Tcp));
 
         // compares on yaml::Value
         // rule -> yaml

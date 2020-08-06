@@ -22,7 +22,7 @@
       Specif:
         Domain:
           # regexp pattern
-          pattern: '\A(mail\.)?google\.((com)|(co\.jp))\z'
+          wildcard: 'mail.google.com'
     port:
       Specif: 443
     protocol:
@@ -32,7 +32,7 @@
     address:
       Specif:
         Domain:
-          pattern: '\A(www\.)?facebook\.com\z'
+          wildcard: 'www.facebook.com'
     port: Any
     protocol:
       Specif: Tcp
@@ -41,7 +41,7 @@
     address:
       Specif:
         Domain:
-          pattern: '\A(www\.)?youtube\.com\z'
+          wildcard: 'www.youtube.com'
     port: Any
     protocol:
       Specif: Tcp

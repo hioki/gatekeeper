@@ -70,13 +70,13 @@
 //! );
 //! // allow connecting to actcast.io
 //! rule.allow(
-//!     Specif(Regex::new(r"\A(.+\.)?actcast\.io\z").unwrap().into()),
+//!     Specif("*.actcast.io".into()),
 //!     Any,
 //!     Specif(L4Protocol::Tcp),
 //! );
 //! // deny facebook.com
 //! rule.allow(
-//!     Specif(Regex::new(r"\A(www\.)?facebook\.com\z").unwrap().into()),
+//!     Specif("www.facebook.com".into()),
 //!     Any,
 //!     Specif(L4Protocol::Tcp),
 //! );
